@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Natural Language MongoDB CRUD</title>
+    <link rel="stylesheet" href="style.css"> </head>
+<body>
+    <div class="container">
+        <h1>Natural Language MongoDB CRUD</h1>
+        <p>Use natural language to request details from the MongoDB - IMDB collection.</p>
+        <p>Example requests:</p>
+        <ul>    
+            <li>Find all movies</li>
+            <li>Show details of the movie "Inception"</li>
+            <li>Update the rating of "The Dark Knight" to 9.0</li>
+            <li>Delete the movie "Avatar"</li>
+        </ul>
+       
+        <div class="input-section">
+            <label for="request-input">Enter your request:</label>
+            <textarea id="request-input"></textarea>
+            <button id="run-button">Run</button>
+        </div>
+
+        <div class="output-section">
+            <h2>Response:</h2>
+            <pre id="response-output"></pre>
+            <div id="movie-list">
+                </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script> </body>
+</html>
