@@ -4,7 +4,9 @@ const { typeDefs } = require("./schema/type-defs");
 const { resolvers } = require("./schema/resolvers");
 const mongoose = require("mongoose");
 const path = require('path');
-const { spawn } = require('child_process'); // Import child_process module
+const { spawn } = require('child_process'); 
+const Movie = require("./models/Movie"); 
+const Genre = require("./models/Genre");
 
 const MONGODB = "mongodb+srv://kavyadindi:JaceClary02@cluster-k.cpyw4ag.mongodb.net/imdb?retryWrites=true&w=majority&appName=Cluster-K";
 
@@ -41,8 +43,8 @@ mongoose.connect(MONGODB, {
 
             console.log(`Received natural language query: "${naturalLanguageQuery}"`);
 
-            // Spawn a Python child process to execute the LLM/MongoDB logic
-            // Ensure 'python' or 'python3' is in your system's PATH, or provide the full path to your Python executable
+            // Spawn a Python child process to execute the LLM logic.
+            // The Python script (ollama_executor.py) will now return GraphQL operation parameters.
             const pythonProcess = spawn('python', [path.join(__dirname, 'ollama_executor.py'), naturalLanguageQuery]);
 
             let pythonOutput = '';
@@ -57,8 +59,9 @@ mongoose.connect(MONGODB, {
                 console.error(`Python stderr: ${data.toString()}`); // Log Python errors for debugging
             });
 
-            pythonProcess.on('close', (code) => {
+            pythonProcess.on('close', async (code) => { // Made async to await GraphQL execution
                 console.log(`Python process exited with code ${code}`);
+                console.log("[DEBUG] Raw Python output:", pythonOutput); // Log raw output for debugging
                 if (code !== 0) {
                     return res.status(500).json({
                         error: `Python script failed with code ${code}.`,
@@ -68,28 +71,45 @@ mongoose.connect(MONGODB, {
                 }
 
                 try {
-                    const result = JSON.parse(pythonOutput);
-                    res.json(result); // Send the parsed JSON result to the frontend
-                } catch (parseError) {
-                    console.error('Failed to parse Python output as JSON:', parseError);
-                    res.status(500).json({
-                        error: "Failed to parse Python script output.",
-                        details: parseError.message,
-                        raw_output: pythonOutput
+                  const llmResponse = JSON.parse(pythonOutput);
+                   // const llmResponse = {query: "mutation CreateMovie($title: String!, $genreNames: [String!]!, $description: String, $director: String, $actors: [String], $year: Int, $rating: Float) { createMovie(  title: $title genreNames: $genreNames description: $description director: $director actors: $actors year: $year rating: $rating ) { id title year genres { name } } }", variables: {"title": "Taare Zameen Par", "genreNames": ["drama"], "description": "A coming-of-age story about a child who is dyslexic.", "director": "Aamir Khan", "actors": ["Darsheel Safary", "Aamir Khan"], "year": 2007, "rating": 8.8}};
+           // Assuming pythonOutput is an object with query and variables}
+                    if (llmResponse.status === "error") {
+                        return res.status(500).json({
+                            error: "LLM failed to generate query components.",
+                            details: llmResponse.message,
+                            llm_raw_output: llmResponse.llm_raw_output,
+                            cleaned_output_attempt: llmResponse.cleaned_output_attempt
+                        });
+                    }
+
+                    console.log("Query: ", llmResponse.query);
+                    console.log("Variables: ", llmResponse.variables);
+
+                    // Execute the GraphQL operation using Apollo Server's executeOperation method
+                    const result = await server.executeOperation({
+                        query: llmResponse.query,
+                        variables: llmResponse.variables,
                     });
+
+                    if (result.errors) {
+                        console.error("GraphQL Errors:", result.errors);
+                        return res.status(400).json({ errors: result.errors });
+                    }
+
+                    res.json(result.data);
+                } catch (error) {
+                    console.error("Error executing GraphQL operation:", error);
+                    res.status(500).json({ error: "Failed to execute GraphQL operation", details: error.message });
                 }
             });
-
-            pythonProcess.on('error', (err) => {
-                console.error('Failed to start Python process:', err);
-                res.status(500).json({ error: "Failed to execute LLM script.", details: err.message });
-            });
-        });
+        });     
 
         const PORT = process.env.PORT || 4000;
         app.listen(PORT, () => {
-            console.log(`Server running on http://localhost:${PORT}`);
-            console.log(`GraphQL endpoint at http://localhost:${PORT}${server.graphqlPath}`);
-        });
-    })
-    .catch(err => console.error(`Error connecting to MongoDB or starting server: ${err}`));
+            console.log(`Server is running on http://localhost:${PORT}${server.graphqlPath}`);
+        }); 
+        })
+    .catch(err => {
+        console.error("Error starting server:", err);
+    });
